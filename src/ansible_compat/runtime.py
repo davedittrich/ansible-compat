@@ -143,6 +143,18 @@ class Runtime:
         else:
             run_func = subprocess.run
 
+        if '--debug' in args:
+            result = run_func(
+                ['bash', '-e', 'type', args[0]],
+                universal_newlines=True,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env or self.environ,
+                cwd=cwd,
+            )
+            if result.returncode == 0:
+                _logger.debug(result.stdout)
         for _ in range(self.max_retries + 1 if retry else 1):
             result = run_func(
                 args,
