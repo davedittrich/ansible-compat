@@ -1,4 +1,5 @@
 """Sample use of Runtime class."""
+
 from ansible_compat.runtime import Runtime
 
 
@@ -9,16 +10,16 @@ def test_runtime_example() -> None:
     runtime = Runtime(isolated=True, max_retries=3)
 
     # Print Ansible core version
-    print(runtime.version)  # 2.9.10 (Version object)
+    _ = runtime.version  # 2.9.10 (Version object)
     # Get configuration info from runtime
-    print(runtime.config.collections_path)
+    _ = runtime.config.collections_path
 
     # Detect if current project is a collection and install its requirements
     runtime.prepare_environment(install_local=True)  # will retry 3 times if needed
 
     # Install a new collection (will retry 3 times if needed)
-    runtime.install_collection("containers.podman")
+    runtime.install_collection("examples/reqs_v2/community-molecule-0.1.0.tar.gz")
 
     # Execute a command
-    result = runtime.exec(["ansible-doc", "--list"])
+    result = runtime.run(["ansible-doc", "--list"])
     assert result.returncode == 0

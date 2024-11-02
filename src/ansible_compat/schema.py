@@ -1,13 +1,20 @@
 """Utils for JSON Schema validation."""
+
+from __future__ import annotations
+
 import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, Sequence, Union
+from typing import TYPE_CHECKING
 
 import jsonschema
 from jsonschema.validators import validator_for
 
+if TYPE_CHECKING:  # pragma: no cover
+    from ansible_compat.types import JSON
 
-def to_path(schema_path: Sequence[Union[str, int]]) -> str:
+
+def to_path(schema_path: Sequence[str | int]) -> str:
     """Flatten a path to a dot delimited string.
 
     :param schema_path: The schema path
@@ -16,7 +23,7 @@ def to_path(schema_path: Sequence[Union[str, int]]) -> str:
     return ".".join(str(index) for index in schema_path)
 
 
-def json_path(absolute_path: Sequence[Union[str, int]]) -> str:
+def json_path(absolute_path: Sequence[str | int]) -> str:
     """Flatten a data path to a dot delimited string.
 
     :param absolute_path: The path
@@ -31,46 +38,20 @@ def json_path(absolute_path: Sequence[Union[str, int]]) -> str:
     return path
 
 
-@dataclass
+@dataclass(order=True)
 class JsonSchemaError:
     # pylint: disable=too-many-instance-attributes
     """Data structure to hold a json schema validation error."""
 
-    message: str
+    # order of attributes below is important for sorting
+    schema_path: str
     data_path: str
     json_path: str
-    schema_path: str
+    message: str
+    expected: bool | int | str
     relative_schema: str
-    expected: Union[bool, int, str]
     validator: str
     found: str
-
-    @property
-    def _hash_key(self) -> Any:
-        # line attr is knowingly excluded, as dict is not hashable
-        return (
-            self.schema_path,
-            self.data_path,
-            self.json_path,
-            self.message,
-            self.expected,
-        )
-
-    def __hash__(self) -> int:
-        """Return a hash value of the instance."""
-        return hash(self._hash_key)
-
-    def __eq__(self, other: object) -> bool:
-        """Identify whether the other object represents the same rule match."""
-        if not isinstance(other, self.__class__):
-            return NotImplemented
-        return self.__hash__() == other.__hash__()
-
-    def __lt__(self, other: object) -> bool:
-        """Return whether the current object is less than the other."""
-        if not isinstance(other, self.__class__):
-            return NotImplemented
-        return bool(self._hash_key < other._hash_key)
 
     def to_friendly(self) -> str:
         """Provide a friendly explanation of the error.
@@ -81,21 +62,23 @@ class JsonSchemaError:
 
 
 def validate(
-    schema: Union[str, Mapping[str, Any]], data: Dict[str, Any]
-) -> List[JsonSchemaError]:
+    schema: JSON,
+    data: JSON,
+) -> list[JsonSchemaError]:
     """Validate some data against a JSON schema.
 
     :param schema: the JSON schema to use for validation
     :param data: The data to validate
     :returns: Any errors encountered
     """
-    errors: List[JsonSchemaError] = []
+    errors: list[JsonSchemaError] = []
 
     if isinstance(schema, str):
         schema = json.loads(schema)
     try:
         if not isinstance(schema, Mapping):
-            raise jsonschema.SchemaError("Invalid schema, must be a mapping")
+            msg = "Invalid schema, must be a mapping"
+            raise jsonschema.SchemaError(msg)  # noqa: TRY301
         validator = validator_for(schema)
         validator.check_schema(schema)
     except jsonschema.SchemaError as exc:
@@ -119,8 +102,8 @@ def validate(
                 data_path=to_path(validation_error.absolute_path),
                 json_path=json_path(validation_error.absolute_path),
                 schema_path=to_path(validation_error.schema_path),
-                relative_schema=validation_error.schema,
-                expected=validation_error.validator_value,
+                relative_schema=str(validation_error.schema),
+                expected=str(validation_error.validator_value),
                 validator=str(validation_error.validator),
                 found=str(validation_error.instance),
             )

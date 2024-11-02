@@ -1,4 +1,5 @@
 """Tests for ansible_compat.config submodule."""
+
 import copy
 import subprocess
 
@@ -30,8 +31,11 @@ def test_config() -> None:
     assert isinstance(config.collections_path, list)
     assert config.collections_paths == config.collections_path
 
+    # check if we can access the special data member
+    assert config.data["ACTION_WARNINGS"] == config.ACTION_WARNINGS
+
     with pytest.raises(AttributeError):
-        print(config.THIS_DOES_NOT_EXIST)
+        _ = config.THIS_DOES_NOT_EXIST
 
 
 def test_config_with_dump() -> None:
@@ -52,34 +56,11 @@ def test_config_copy() -> None:
     assert new_config is not config
 
 
-def test_ansible_collections_path_210(monkeypatch: MonkeyPatch) -> None:
-    """Checks that ansible_collections_path works as expected correctly."""
-    monkeypatch.setenv("ANSIBLE_COLLECTIONS_PATHS", "foo")
-    monkeypatch.delenv("ANSIBLE_COLLECTIONS_PATH", False)
-    assert ansible_collections_path() == "ANSIBLE_COLLECTIONS_PATHS"
-    monkeypatch.delenv("ANSIBLE_COLLECTIONS_PATHS", False)
-    monkeypatch.setattr(
-        "ansible_compat.config.ansible_version", lambda x="2.10.0": Version(x)
-    )
-    assert ansible_collections_path() == "ANSIBLE_COLLECTIONS_PATH"
-
-
-def test_ansible_collections_path_29(monkeypatch: MonkeyPatch) -> None:
-    """Checks that ansible_collections_path works as expected correctly."""
-    monkeypatch.delenv("ANSIBLE_COLLECTIONS_PATHS", False)
-    monkeypatch.setenv("ANSIBLE_COLLECTIONS_PATH", "foo")
-    assert ansible_collections_path() == "ANSIBLE_COLLECTIONS_PATH"
-    monkeypatch.delenv("ANSIBLE_COLLECTIONS_PATH", False)
-    monkeypatch.setattr(
-        "ansible_compat.config.ansible_version", lambda x="2.9.0": Version(x)
-    )
-    assert ansible_collections_path() == "ANSIBLE_COLLECTIONS_PATHS"
-
-
 def test_parse_ansible_version_fail() -> None:
     """Checks that parse_ansible_version raises an error on invalid input."""
     with pytest.raises(
-        InvalidPrerequisiteError, match="Unable to parse ansible cli version"
+        InvalidPrerequisiteError,
+        match="Unable to parse ansible cli version",
     ):
         parse_ansible_version("foo")
 
@@ -88,7 +69,10 @@ def test_ansible_version_missing(monkeypatch: MonkeyPatch) -> None:
     """Validate ansible_version behavior when ansible is missing."""
     monkeypatch.setattr(
         "subprocess.run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(args=[], returncode=1),
+        lambda *args, **kwargs: subprocess.CompletedProcess(  # noqa: ARG005
+            args=[],
+            returncode=1,
+        ),
     )
     with pytest.raises(
         MissingAnsibleError,
@@ -96,3 +80,27 @@ def test_ansible_version_missing(monkeypatch: MonkeyPatch) -> None:
     ):
         # bypassing lru cache
         ansible_version.__wrapped__()
+
+
+def test_ansible_version() -> None:
+    """Validate ansible_version behavior."""
+    assert ansible_version() >= Version("1.0")
+
+
+def test_ansible_version_arg() -> None:
+    """Validate ansible_version behavior."""
+    assert ansible_version("2.0") >= Version("1.0")
+
+
+@pytest.mark.parametrize(
+    "var",
+    ("", "ANSIBLE_COLLECTIONS_PATH", "ANSIBLE_COLLECTIONS_PATHS"),
+    ids=["blank", "singular", "plural"],
+)
+def test_ansible_collections_path_env(var: str, monkeypatch: MonkeyPatch) -> None:
+    """Test that ansible_collections_path returns the appropriate env var."""
+    # Set the variable
+    if var:
+        monkeypatch.setenv(var, "")
+
+    assert ansible_collections_path() == (var or "ANSIBLE_COLLECTIONS_PATH")
